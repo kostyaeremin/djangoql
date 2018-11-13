@@ -19,6 +19,7 @@ Contents
 * `Installation`_
 * `Add it to your Django admin`_
 * `Using together with a standard Django admin search`_
+* `Saved Queries with Advanced Search with DjangoQL`_
 * `Language reference`_
 * `DjangoQL Schema`_
 * `Custom search fields`_
@@ -81,6 +82,15 @@ For the example above, a checkbox that controls search mode would appear near
 the search input. If you don't want two search modes, simply remove
 ``search_fields`` from your ModelAdmin class.
 
+
+Saved Queries with Advanced Search with DjangoQL
+-------------------------------------------------
+
+If you add ``DjangoQLSearchMixin`` to your model admin,
+you will get button "Save query" near textarea.
+You can write your query, save it in modal window.
+You can select auto-completion or saved queries in popup.
+You can select, edit or delete your or public saved query.
 
 Language reference
 ------------------

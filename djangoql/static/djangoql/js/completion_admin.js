@@ -94,6 +94,7 @@
     DjangoQL.init({
       completionEnabled: QLEnabled,
       introspections: 'introspect/',
+      savedqueries: 'djangoql-saved-query/',
       syntaxHelp: 'djangoql-syntax/',
       selector: 'textarea[name=q]',
       autoResize: true

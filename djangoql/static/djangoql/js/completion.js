@@ -120,6 +120,7 @@
 
     prefix: '',
     suggestions: [],
+    savedQueries: [],
     selected: null,
     valuesCaseSensitive: false,
     highlightCaseSensitive: true,
@@ -130,6 +131,9 @@
 
     init: function (options) {
       var syntaxHelp;
+      var inputDiv;
+      var changelistSearch;
+      var changelistSearchDiv;
 
       // Initialization
       if (!this.isObject(options)) {
@@ -137,6 +141,7 @@
         return;
       }
       this.loadIntrospections(options.introspections);
+      this.loadSavedQueries(options.savedqueries);
       this.textarea = document.querySelector(options.selector);
       if (!this.textarea) {
         this.logError('Element not found by selector: ' + options.selector);
@@ -163,6 +168,10 @@
       this.onCompletionMouseDown = this.onCompletionMouseDown.bind(this);
       this.onCompletionMouseOut = this.onCompletionMouseOut.bind(this);
       this.onCompletionMouseOver = this.onCompletionMouseOver.bind(this);
+      this.onSavedQueryMouseClick = this.onSavedQueryMouseClick.bind(this);
+      this.onSavedQueryMouseDown = this.onSavedQueryMouseDown.bind(this);
+      this.onSavedQueryMouseOut = this.onSavedQueryMouseOut.bind(this);
+      this.onSavedQueryMouseOver = this.onSavedQueryMouseOver.bind(this);
       this.popupCompletion = this.popupCompletion.bind(this);
       this.debouncedRenderCompletion = this.debounce(
           this.renderCompletion.bind(this),
@@ -194,11 +203,168 @@
             'mouseout', this.renderCompletion.bind(this, true));
       }
 
+      this.modal = document.createElement('div');
+      this.modal.className = 'modal';
+      this.modal.id = 'saved-query-modal';
+      document.querySelector('body').appendChild(this.modal);
+
+      this.modalContent = document.createElement('div');
+      this.modalContent.className = 'modal-content';
+      this.modalContent.id = 'modal-content';
+      this.modal.appendChild(this.modalContent);
+
+      this.modalClose = document.createElement('span');
+      this.modalClose.innerHTML = '&times;';
+      this.modalClose.addEventListener('click', function () {
+        document.getElementById('saved-query-modal').style.display = 'none';
+      });
+      window.addEventListener('click', function (event) {
+        if (event.target.id === 'saved-query-modal') {
+          document.getElementById('saved-query-modal').style.display = 'none';
+        }
+      });
+
+      this.modalContent.appendChild(this.modalClose);
+      this.modalHeader = document.createElement('h1');
+      this.modalHeader.id = 'modal-header';
+      this.modalContent.appendChild(this.modalHeader);
+
+      this.modalForm = document.createElement('form');
+      this.modalForm.id = 'modal-form';
+      this.modalForm.method = 'post';
+      this.modalForm.action = options.savedqueries;
+      this.modalContent.appendChild(this.modalForm);
+
+      this.modalCSRFInput = document.createElement('input');
+      this.modalCSRFInput.type = 'hidden';
+      this.modalCSRFInput.name = 'csrfmiddlewaretoken';
+      this.modalCSRFInput.value = this.getCookie('csrftoken');
+      this.modalForm.appendChild(this.modalCSRFInput);
+
+      this.modalTitle = document.createElement('p');
+      this.modalTitle.textContent = 'Enter a description, query, and check "Is public" for available access to this saved query to all users.';
+      this.modalForm.appendChild(this.modalTitle);
+
+      this.fieldset = document.createElement('fieldset');
+      this.fieldset.className = 'module aligned';
+      this.modalForm.appendChild(this.fieldset);
+      inputDiv = document.createElement('div');
+      inputDiv.className = 'form-row';
+      this.modalDescriptionLabel = document.createElement('label');
+      this.modalDescriptionLabel.htmlFor = 'description';
+      this.modalDescriptionLabel.textContent = 'Description: ';
+      this.modalDescriptionLabel.className = 'required';
+      this.fieldset.appendChild(inputDiv);
+      inputDiv.appendChild(this.modalDescriptionLabel);
+      this.modalDescriptionInput = document.createElement('input');
+      this.modalDescriptionInput.type = 'text';
+      this.modalDescriptionInput.id = 'description';
+      this.modalDescriptionInput.name = 'description';
+      this.modalDescriptionInput.className = 'vTextField';
+      this.modalDescriptionInput.required = true;
+      inputDiv.appendChild(this.modalDescriptionInput);
+
+      inputDiv = document.createElement('div');
+      inputDiv.className = 'form-row';
+      this.modalQueryLabel = document.createElement('label');
+      this.modalQueryLabel.htmlFor = 'query';
+      this.modalQueryLabel.textContent = 'Query: ';
+      this.modalQueryLabel.className = 'required';
+      this.fieldset.appendChild(inputDiv);
+      inputDiv.appendChild(this.modalQueryLabel);
+      this.modalQueryInput = document.createElement('textarea');
+      this.modalQueryInput.rows = 5;
+      this.modalQueryInput.id = 'query';
+      this.modalQueryInput.name = 'query';
+      this.modalQueryInput.className = 'vTextField';
+      this.modalQueryInput.required = true;
+      inputDiv.appendChild(this.modalQueryInput);
+
+      inputDiv = document.createElement('div');
+      inputDiv.className = 'form-row';
+      this.modalIsPublicLabel = document.createElement('label');
+      this.modalIsPublicLabel.htmlFor = 'is_public';
+      this.modalIsPublicLabel.textContent = 'Is public';
+      this.modalIsPublicLabel.className = 'vCheckboxLabel';
+      this.fieldset.appendChild(inputDiv);
+      this.modalIsPublicCheckbox = document.createElement('input');
+      this.modalIsPublicCheckbox.type = 'checkbox';
+      this.modalIsPublicCheckbox.id = 'is_public';
+      this.modalIsPublicCheckbox.name = 'is_public';
+      var inputCheckboxDiv = document.createElement('div');
+      inputCheckboxDiv.className = 'checkbox-row';
+      inputDiv.appendChild(inputCheckboxDiv);
+      inputCheckboxDiv.appendChild(this.modalIsPublicCheckbox);
+      inputCheckboxDiv.appendChild(this.modalIsPublicLabel);
+
+      inputDiv = document.createElement('div');
+      inputDiv.className = 'submit-row';
+      this.createButton = document.createElement('input');
+      this.createButton.className = 'default';
+      this.createButton.id = 'create-button';
+      this.createButton.value = 'Save';
+
+      this.modalForm.appendChild(inputDiv);
+      inputDiv.appendChild(this.createButton);
+
+      this.deleteBlock = document.createElement('p');
+      this.deleteBlock.className = 'deletelink-box';
+      this.deleteBlock.id = 'deletelink-box';
+      this.deleteBlock.style.display = 'none';
+      this.deleteButton = document.createElement('a');
+      this.deleteButton.className = 'deletelink';
+      this.deleteButton.id = 'deletelink';
+      this.deleteButton.innerHTML = 'Delete';
+      inputDiv.appendChild(this.deleteBlock);
+      this.deleteBlock.appendChild(this.deleteButton);
+
+      this.newButton = document.createElement('button');
+      this.newButton.innerHTML = 'Save query';
+      this.newButton.className = 'button toolbar-button';
+      changelistSearch = document.getElementById('changelist-search');
+      changelistSearchDiv = changelistSearch.getElementsByTagName('div')[0];
+      changelistSearchDiv.appendChild(this.newButton);
+      this.newButton.addEventListener('mousedown', this.openModalForCreate.bind(this, event, options));
+
       this.completion = document.createElement('div');
       this.completion.className = 'djangoql-completion';
       document.querySelector('body').appendChild(this.completion);
+
+      this.completionButtonsDiv = document.createElement('div');
+      this.completionButtonsDiv.className = 'tab';
+      this.completion.appendChild(this.completionButtonsDiv);
+
+      this.firstTabButton = document.createElement('button');
+      this.firstTabButton.className = 'tablinks';
+      this.firstTabButton.id = 'defaultOpen';
+      this.firstTabButton.innerHTML = 'Auto-completion';
+      this.secondTabButton = document.createElement('button');
+      this.secondTabButton.className = 'tablinks';
+      this.secondTabButton.id = 'secondTabButton';
+      this.secondTabButton.innerHTML = 'Saved queries';
+
+      this.firstTabButton.addEventListener('click', this.openTab.bind(this, this.firstTabButton, 'first'));
+      this.firstTabButton.addEventListener('mousedown', this.onCompletionMouseDown);
+      this.secondTabButton.addEventListener('click', this.openTab.bind(this, this.secondTabButton, 'second'));
+      this.secondTabButton.addEventListener('mousedown', this.onCompletionMouseDown);
+
+      this.completionButtonsDiv.appendChild(this.firstTabButton);
+      this.completionButtonsDiv.appendChild(this.secondTabButton);
+
+      this.completionFirstTab = document.createElement('div');
+      this.completionFirstTab.className = 'tabcontent';
+      this.completionFirstTab.id = 'first';
+      this.completionSecondTab = document.createElement('div');
+      this.completionSecondTab.className = 'tabcontent';
+      this.completionSecondTab.id = 'second';
+      this.completion.appendChild(this.completionFirstTab);
+      this.completion.appendChild(this.completionSecondTab);
+
       this.completionUL = document.createElement('ul');
-      this.completion.appendChild(this.completionUL);
+      this.savedQueriesUL = document.createElement('ul');
+      this.savedQueriesUL.id = 'savedQueriesUL';
+      this.completionFirstTab.appendChild(this.completionUL);
+      this.completionSecondTab.appendChild(this.savedQueriesUL);
       if (typeof options.syntaxHelp === 'string') {
         syntaxHelp = document.createElement('p');
         syntaxHelp.className = 'syntax-help';
@@ -212,6 +378,7 @@
         });
         this.completion.appendChild(syntaxHelp);
       }
+      document.getElementById('defaultOpen').click();
     },
 
     enableCompletion: function () {
@@ -259,6 +426,58 @@
             'introspections parameter is expected to be either URL or ' +
             'object with definitions, but ' + introspections + ' was found');
       }
+    },
+
+    loadSavedQueries: function (savedqueries) {
+      var onLoadError;
+      var request;
+      if (typeof savedqueries === 'string') {
+        // treat as URL
+        onLoadError = function () {
+          this.logError('failed to load from ' + savedqueries);
+        }.bind(this);
+        request = new XMLHttpRequest();
+        request.open('GET', savedqueries, true);
+        request.onload = function () {
+          var data;
+          if (request.status === 200) {
+            data = JSON.parse(request.responseText);
+            this.savedQueries = data.saved_queries;
+          } else {
+            onLoadError();
+          }
+        }.bind(this);
+        request.ontimeout = onLoadError;
+        request.onerror = onLoadError;
+        /* eslint-disable max-len */
+        // Workaround for IE9, see
+        // https://cypressnorth.com/programming/internet-explorer-aborting-ajax-requests-fixed/
+        /* eslint-enable max-len */
+        request.onprogress = function () {};
+        window.setTimeout(request.send.bind(request));
+      } else {
+        this.logError(
+            'savedqueries parameter is expected to be either URL or ' +
+            'object with definitions, but ' + savedqueries + ' was found');
+      }
+    },
+
+    getCookie: function (name) {
+      var cookieValue = null;
+      var cookies;
+      var cookie;
+      var i;
+      if (document.cookie && document.cookie !== '') {
+        cookies = document.cookie.split(';');
+        for (i = 0; i < cookies.length; i++) {
+          cookie = cookies[i].replace(/\s+/g, '');
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
     },
 
     isObject: function (obj) {
@@ -332,6 +551,25 @@
     },
 
     onCompletionMouseOver: function (e) {
+      this.selected = parseInt(e.target.getAttribute('data-index'), 10);
+      this.debouncedRenderCompletion();
+    },
+
+    onSavedQueryMouseClick: function (e) {
+      this.selectSavedQuery(parseInt(e.target.getAttribute('data-index'), 10));
+    },
+
+    onSavedQueryMouseDown: function (e) {
+      // This is needed to prevent 'blur' event on textarea
+      e.preventDefault();
+    },
+
+    onSavedQueryMouseOut: function () {
+      this.selected = null;
+      this.debouncedRenderCompletion();
+    },
+
+    onSavedQueryMouseOver: function (e) {
       this.selected = parseInt(e.target.getAttribute('data-index'), 10);
       this.debouncedRenderCompletion();
     },
@@ -427,7 +665,7 @@
       var startPos = this.textarea.selectionStart - this.prefix.length;
       var textAfter = this.textarea.value.slice(startPos + this.prefix.length);
       var textBefore = this.textarea.value.slice(0, startPos);
-
+      console.log(this.suggestions);
       var snippetAfterParts = this.suggestions[index].snippetAfter.split('|');
       var textToPaste = this.suggestions[index].snippetBefore +
           this.suggestions[index].text +
@@ -446,6 +684,34 @@
       }
       this.generateSuggestions(this.textarea);
       this.renderCompletion();
+    },
+
+    selectSavedQuery: function (index) {
+      var textToPaste = this.savedQueries[index].query;
+      this.textarea.value = textToPaste;
+      this.textarea.focus();
+      this.selected = null;
+      if (this.textareaResize) {
+        this.textareaResize();
+      }
+      this.generateSuggestions(this.textarea);
+      this.renderCompletion();
+    },
+
+    openTab: function (element, id) {
+      var i;
+      var tabcontent;
+      var tablinks;
+      tabcontent = document.getElementsByClassName('tabcontent');
+      for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = 'none';
+      }
+      tablinks = document.getElementsByClassName('tablinks');
+      for (i = 0; i < tablinks.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(' active', '');
+      }
+      document.getElementById(id).style.display = 'block';
+      element.className += ' active';
     },
 
     hideCompletion: function () {
@@ -481,7 +747,10 @@
       var li;
       var liLen;
       var suggestionsLen;
-
+      var savedQueriesLen;
+      var pPersonal;
+      var pPublic;
+      var currentEditLi;
       if (!this.completionEnabled) {
         this.hideCompletion();
         return;
@@ -540,11 +809,234 @@
         this.completionUL.removeChild(li[liLen]);
       }
 
+      savedQueriesLen = this.savedQueries.length;
+      li = [].slice.call(this.savedQueriesUL.querySelectorAll('li'));
+      liLen = li.length;
+
+      // Update or create necessary elements
+      for (i = 0; i < savedQueriesLen; i++) {
+        if (i < liLen) {
+          currentLi = li[i];
+        } else {
+          currentLi = document.createElement('li');
+          currentLi.setAttribute('data-index', i);
+          if (this.savedQueries[i].is_public === false) {
+            if (pPersonal === undefined) {
+              pPersonal = document.createElement('p');
+              pPersonal.textContent = 'Personal:';
+              pPersonal.className = 'in-ul';
+              document.getElementById('savedQueriesUL').appendChild(pPersonal);
+            }
+          } else if (pPublic === undefined) {
+            pPublic = document.createElement('p');
+            pPublic.textContent = 'Public:';
+            pPublic.className = 'in-ul';
+            document.getElementById('savedQueriesUL').appendChild(pPublic);
+          }
+          this.savedQueriesUL.appendChild(currentLi);
+          currentLi.addEventListener('click', this.onSavedQueryMouseClick);
+          currentLi.addEventListener('mousedown', this.onSavedQueryMouseDown);
+          currentLi.addEventListener('mouseout', this.onSavedQueryMouseOut);
+          currentLi.addEventListener('mouseover', this.onSavedQueryMouseOver);
+        }
+        currentLi.textContent = this.savedQueries[i].description;
+        currentEditLi = document.createElement('span');
+        currentEditLi.className = 'changelink';
+        currentLi.appendChild(currentEditLi);
+        currentEditLi.addEventListener('mousedown', this.openModalForEdit.bind(this, this.savedQueries[i]));
+
+        if (i === this.selected) {
+          currentLi.className = 'active';
+          currentLiRect = currentLi.getBoundingClientRect();
+          completionRect = this.savedQueriesUL.getBoundingClientRect();
+          if (currentLiRect.bottom > completionRect.bottom) {
+            this.savedQueriesUL.scrollTop = this.savedQueriesUL.scrollTop + 2 +
+                (currentLiRect.bottom - completionRect.bottom);
+          } else if (currentLiRect.top < completionRect.top) {
+            this.savedQueriesUL.scrollTop = this.savedQueriesUL.scrollTop - 2 -
+                (completionRect.top - currentLiRect.top);
+          }
+        } else {
+          currentLi.className = '';
+        }
+      }
+      // Remove redundant elements
+      while (liLen > savedQueriesLen) {
+        liLen--;
+        li[liLen].removeEventListener('click', this.onSavedQueryMouseClick);
+        li[liLen].removeEventListener('mousedown', this.onSavedQueryMouseDown);
+        li[liLen].removeEventListener('mouseout', this.onSavedQueryMouseOut);
+        li[liLen].removeEventListener('mouseover', this.onSavedQueryMouseOver);
+        this.savedQueriesUL.removeChild(li[liLen]);
+      }
+
+
       inputRect = this.textarea.getBoundingClientRect();
       this.completion.style.top = window.pageYOffset + inputRect.top +
           inputRect.height + 'px';
       this.completion.style.left = inputRect.left + 'px';
       this.completion.style.display = 'block';
+    },
+
+    openModalForCreate: function (e, options) {
+      var textarea;
+      var modalQueryInput;
+      var modalHeader;
+      var modalForm;
+
+      document.getElementById('description').value = '';
+      textarea = document.querySelector(options.selector);
+      modalQueryInput = document.getElementById('query');
+      modalQueryInput.value = textarea.value;
+      modalHeader = document.getElementById('modal-header');
+      modalHeader.textContent = 'Save new query';
+      document.getElementById('saved-query-modal').style.display = 'block';
+      modalForm = document.getElementById('modal-form');
+      document.getElementById('create-button').addEventListener('click', this.sendCreateSavedQuery.bind(this, event, modalForm));
+      e.preventDefault();
+    },
+
+    openModalForEdit: function (savedQuery) {
+      var modalQueryInput;
+      var modalDescriptionInput;
+      var modalIsPublicCheckbox;
+      var modalHeader;
+      var modalForm;
+
+      modalQueryInput = document.getElementById('query');
+      modalQueryInput.value = savedQuery.query;
+      modalDescriptionInput = document.getElementById('description');
+      modalDescriptionInput.value = savedQuery.description;
+      modalIsPublicCheckbox = document.getElementById('is_public');
+      modalIsPublicCheckbox.checked = savedQuery.is_public;
+      modalHeader = document.getElementById('modal-header');
+      modalHeader.textContent = 'Edit query';
+      modalForm = document.getElementById('modal-form');
+
+      document.getElementById('create-button').addEventListener('click', this.sendEditSavedQuery.bind(this, event, modalForm, savedQuery.id));
+      document.getElementById('deletelink-box').style.display = '';
+      document.getElementById('deletelink').addEventListener('click', this.sendDeleteSavedQuery.bind(this, event, modalForm, savedQuery.id));
+      document.getElementById('saved-query-modal').style.display = 'block';
+    },
+
+    sendCreateSavedQuery: function (event, data) {
+      var body;
+      var request = new XMLHttpRequest();
+      request.open('POST', data.action, true);
+      request.setRequestHeader('X-CSRFToken', this.getCookie('csrftoken'));
+      request.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+      request.onload = function () {
+        var response;
+        var index;
+        var elem;
+        var subitem;
+        var clone;
+        subitem = document.createElement('li');
+        if (request.status === 201) {
+          response = JSON.parse(request.responseText);
+          this.savedQueries.push(response);
+          subitem.className = 'success';
+          subitem.textContent = 'The saved query "' + response.description + '" was created successfully.';
+        } else {
+          subitem.className = 'error';
+          subitem.textContent = 'The saved query was not created.';
+        }
+        document.getElementById('saved-query-modal').style.display = 'none';
+        elem = document.createElement('ul');
+        elem.className = 'messagelist';
+        elem.appendChild(subitem);
+        document.getElementById('container').insertBefore(elem, document.getElementById('content'));
+        // we can not removeEventListener on document.getElementById('create-button'), so that we clone and replace element
+        clone = document.getElementById('create-button').cloneNode(true);
+        document.getElementsByClassName('submit-row')[0].replaceChild(clone, document.getElementById('create-button'));
+      }.bind(this);
+      body = 'description=' + encodeURIComponent(data[2].value) +
+        '&query=' + encodeURIComponent(data[3].value) +
+        '&is_public=' + encodeURIComponent(data[4].checked);
+      request.send(body);
+    },
+
+    sendEditSavedQuery: function (event, data, id) {
+      var body;
+      var request = new XMLHttpRequest();
+      request.open('POST', data.action + id + '/', true);
+      request.setRequestHeader('X-CSRFToken', this.getCookie('csrftoken'));
+      request.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+      request.onload = function () {
+        var response;
+        var index;
+        var elem;
+        var subitem;
+        var clone;
+        subitem = document.createElement('li');
+        if (request.status === 200) {
+          response = JSON.parse(request.responseText);
+          for (index = 0; index < this.savedQueries.length; ++index) {
+            if (this.savedQueries[index].id === response.id) {
+              this.savedQueries[index] = response;
+            }
+          }
+          subitem.className = 'success';
+          subitem.textContent = 'The saved query "' + response.description + '" was edited successfully.';
+        } else {
+          subitem.className = 'error';
+          subitem.textContent = 'The saved query was not edited.';
+        }
+        document.getElementById('saved-query-modal').style.display = 'none';
+        elem = document.createElement('ul');
+        elem.className = 'messagelist';
+        elem.appendChild(subitem);
+        document.getElementById('container').insertBefore(elem, document.getElementById('content'));
+        // we can not removeEventListener on document.getElementById('create-button'), so that we clone and replace element
+        clone = document.getElementById('create-button').cloneNode(true);
+        document.getElementsByClassName('submit-row')[0].replaceChild(clone, document.getElementById('create-button'));
+        clone = document.getElementById('deletelink').cloneNode(true);
+        document.getElementById('deletelink-box').replaceChild(clone, document.getElementById('deletelink'));
+      }.bind(this);
+      body = 'id=' + encodeURIComponent(id) +
+        '&description=' + encodeURIComponent(data[2].value) +
+        '&query=' + encodeURIComponent(data[3].value) +
+        '&is_public=' + encodeURIComponent(data[4].checked);
+      request.send(body);
+    },
+
+    sendDeleteSavedQuery: function (event, data, id) {
+      var request = new XMLHttpRequest();
+      request.open('DELETE', data.action + id + '/', true);
+      request.setRequestHeader('X-CSRFToken', this.getCookie('csrftoken'));
+      request.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+      request.onload = function () {
+        var response;
+        var index;
+        var elem;
+        var subitem;
+        var clone;
+        subitem = document.createElement('li');
+        if (request.status === 200) {
+          response = JSON.parse(request.responseText);
+          for (index = 0; index < this.savedQueries.length; ++index) {
+            if (this.savedQueries[index].id === response.id) {
+              this.savedQueries.splice(index, 1);
+            }
+          }
+          subitem.className = 'success';
+          subitem.textContent = 'The saved query id=' + response.id + ' was deleted successfully.';
+        } else {
+          subitem.className = 'error';
+          subitem.textContent = 'The saved query was not deleted.';
+        }
+        document.getElementById('saved-query-modal').style.display = 'none';
+        elem = document.createElement('ul');
+        elem.className = 'messagelist';
+        elem.appendChild(subitem);
+        document.getElementById('container').insertBefore(elem, document.getElementById('content'));
+        // we can not removeEventListener on document.getElementById('deletelink'), so that we clone and replace element
+        clone = document.getElementById('create-button').cloneNode(true);
+        document.getElementsByClassName('submit-row')[0].replaceChild(clone, document.getElementById('create-button'));
+        clone = document.getElementById('deletelink').cloneNode(true);
+        document.getElementById('deletelink-box').replaceChild(clone, document.getElementById('deletelink'));
+      }.bind(this);
+      request.send();
     },
 
     resolveName: function (name) {

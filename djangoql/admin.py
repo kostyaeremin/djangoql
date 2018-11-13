@@ -8,6 +8,7 @@ from django.forms import Media
 from django.http import HttpResponse
 from django.views.generic import TemplateView
 
+from .views import SavedQueryView, SavedQueryPostView
 from .compat import text_type
 from .exceptions import DjangoQLError
 from .queryset import apply_search
@@ -97,6 +98,22 @@ class DjangoQLSearchMixin(object):
                     r'^introspect/$',
                     self.admin_site.admin_view(self.introspect),
                     name='%s_%s_djangoql_introspect' % (
+                        self.model._meta.app_label,
+                        self.model._meta.model_name,
+                    ),
+                ),
+                url(
+                    r'^djangoql-saved-query/$',
+                    self.admin_site.admin_view(SavedQueryView.as_view(model=self.model)),
+                    name='%s_%s_djangoql_create_saved_query' % (
+                        self.model._meta.app_label,
+                        self.model._meta.model_name,
+                    ),
+                ),
+                url(
+                    r'^djangoql-saved-query/(?P<pk>\d+)/$',
+                    self.admin_site.admin_view(SavedQueryPostView.as_view(model=self.model)),
+                    name='%s_%s_djangoql_edit_saved_query' % (
                         self.model._meta.app_label,
                         self.model._meta.model_name,
                     ),
